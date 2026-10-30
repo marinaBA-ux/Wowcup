@@ -12,8 +12,11 @@ BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
 STATE_FILE = Path("state.json")
-
 SOLD_OUT_TEXT = "билеты проданы"
+
+
+def log(message):
+    print(f"[BOT] {message}", flush=True)
 
 
 def telegram(message: str):
@@ -35,40 +38,49 @@ async def check_page():
         page = await browser.new_page()
 
         try:
-            # 1. Открываем главную страницу WOW Cup
+            log("Шаг 1. Открываем главную страницу WOW Cup")
+
             await page.goto(
                 HOME_URL,
                 wait_until="domcontentloaded",
                 timeout=60000,
             )
+
             await page.wait_for_timeout(5000)
 
-            # 2. Ищем кнопку «Купить билет»
+            log(f"Главная страница открыта: {page.url}")
+
+            # Ищем кнопку покупки
+            log("Шаг 2. Ищем кнопку «Купить билет»")
+
             button = page.get_by_text(
                 re.compile("купить билет", re.IGNORECASE)
             ).first
 
             if await button.count() == 0:
-                raise Exception("На главной странице не найдена кнопка «Купить билет»")
+                raise Exception("Кнопка «Купить билет» не найдена")
 
-            # 3. Нажимаем кнопку и отслеживаем открытие новой вкладки
-            popups = []
-            page.on("popup", lambda popup: popups.append(popup))
+            log("Кнопка найдена")
 
-            await button.click(timeout=15000)
-            await page.wait_for_timeout(7000)
+            # Отслеживаем открытие новой вкладки
+            log("Шаг 3. Нажимаем кнопку покупки")
 
-            # Если открылась новая вкладка — проверяем её.
-            # Если переход произошёл в этой же вкладке — проверяем её.
-            ticket_page = popups[0] if popups else page
+            async with page.expect_popup(timeout=10000) as popup_info:
+                await button.click(timeout=15000)
+
+            ticket_page = await popup_info.value
+
+            log("Открылась новая вкладка")
 
             await ticket_page.wait_for_load_state(
                 "domcontentloaded",
                 timeout=30000,
             )
+
             await ticket_page.wait_for_timeout(5000)
 
-            # 4. Проверяем содержимое страницы покупки
+            log(f"Шаг 4. Адрес страницы покупки: {ticket_page.url}")
+
             text = " ".join(
                 (await ticket_page.locator("body").inner_text(timeout=20000))
                 .lower()
@@ -76,9 +88,17 @@ async def check_page():
             )
 
             if not text:
-                raise Exception("Страница покупки открылась, но текст не найден")
+                raise Exception("На странице покупки не найден текст")
+
+            log("Шаг 5. Текст страницы получен")
+            log(f"Содержимое страницы (первые 1500 символов): {text[:1500]}")
 
             available = SOLD_OUT_TEXT not in text
+
+            if available:
+                log("Результат: фраза «Билеты проданы» НЕ найдена")
+            else:
+                log("Результат: билеты пока проданы")
 
             return available, ticket_page.url, text[:1500]
 
@@ -87,9 +107,10 @@ async def check_page():
 
 
 async def main():
+    log("Начинаем проверку WOW Cup")
+
     available, ticket_url, excerpt = await check_page()
 
-    # Читаем предыдущее состояние
     state = {"available": False}
 
     if STATE_FILE.exists():
@@ -102,7 +123,6 @@ async def main():
 
     previously_available = bool(state.get("available"))
 
-    # Сохраняем новое состояние
     STATE_FILE.write_text(
         json.dumps(
             {
@@ -116,14 +136,23 @@ async def main():
         encoding="utf-8",
     )
 
-    # Отправляем сообщение только при изменении статуса
+    log("Шаг 6. Состояние сохранено")
+
     if available and not previously_available:
+        log("Обнаружено изменение статуса! Отправляем уведомление")
+
         telegram(
             "🎟️ Возможно, на WOW Cup появились билеты!\n\n"
             f"Страница покупки: {ticket_url}\n\n"
             f"Текст страницы:\n{excerpt}\n\n"
             "Проверь наличие билетов вручную."
         )
+
+        log("Уведомление отправлено в Telegram")
+    else:
+        log("Новых билетов по результатам проверки не обнаружено")
+
+    log("Проверка завершена успешно")
 
 
 if __name__ == "__main__":
