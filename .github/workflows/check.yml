@@ -2,7 +2,7 @@ name: Check Afisha tickets
 
 on:
   schedule:
-    - cron: "7-59/10 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
