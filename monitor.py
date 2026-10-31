@@ -65,12 +65,19 @@ async def check_page():
             # Отслеживаем открытие новой вкладки
             log("Шаг 3. Нажимаем кнопку покупки")
 
-            async with page.expect_popup(timeout=10000) as popup_info:
-                await button.click(timeout=15000)
+            popups = []
+            page.on("popup", lambda popup: popups.append(popup))
 
-            ticket_page = await popup_info.value
+            await button.click(timeout=15000)
+            await page.wait_for_timeout(7000)
 
-            log("Открылась новая вкладка")
+            # Проверяем, открылась ли новая вкладка
+            if popups:
+                ticket_page = popups[0]
+                log("Открылась новая вкладка")
+            else:
+                ticket_page = page
+                log("Новая вкладка не открылась. Проверяем текущую")
 
             await ticket_page.wait_for_load_state(
                 "domcontentloaded",
