@@ -107,7 +107,6 @@ async def check_page():
             log("Шаг 5. Текст страницы получен")
             log(f"Содержимое страницы: {text[:1500]}")
 
-```python
             # Проверяем, проданы ли билеты
             sold_out_markers = [
                 "билеты проданы",
@@ -141,8 +140,6 @@ async def check_page():
             log("Статус страницы изменился. Требуется ручная проверка.")
 
             return True, ticket_page.url, text[:1500]
-```
-
 
         finally:
             await browser.close()
