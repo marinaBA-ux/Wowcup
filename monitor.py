@@ -58,20 +58,31 @@ async def check_page():
 
             log("Кнопка найдена")
 
-            # Получаем адрес ссылки непосредственно из кнопки
-            ticket_url = await button.evaluate("""
+            # Диагностика структуры кнопки
+            button_info = await button.evaluate("""
                 el => {
-                    const link = el.closest('a') || el.querySelector('a');
-                    return link ? link.href : null;
+                    const result = [];
+                    let node = el;
+
+                    for (let i = 0; i < 5 && node; i++) {
+                        result.push({
+                            tag: node.tagName,
+                            html: node.outerHTML.substring(0, 1000),
+                            href: node.href || null,
+                            onclick: node.getAttribute('onclick'),
+                            dataHref: node.getAttribute('data-href'),
+                            dataUrl: node.getAttribute('data-url')
+                        });
+                        node = node.parentElement;
+                    }
+
+                    return result;
                 }
             """)
 
-            if not ticket_url:
-                raise Exception(
-                    "Не удалось получить адрес ссылки кнопки покупки"
-                )
+            log(f"Структура кнопки: {json.dumps(button_info, ensure_ascii=False)}")
 
-            log(f"Шаг 3. Получена ссылка на покупку: {ticket_url}")
+            raise Exception("Диагностика завершена. Адрес кнопки пока не определён.")
 
             # Открываем именно ссылку покупки в отдельной вкладке
             ticket_page = await page.context.new_page()
