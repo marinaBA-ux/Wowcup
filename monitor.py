@@ -107,7 +107,8 @@ async def check_page():
             log("Шаг 5. Текст страницы получен")
             log(f"Содержимое страницы: {text[:1500]}")
 
-            # Проверяем отсутствие билетов
+```python
+            # Проверяем, проданы ли билеты
             sold_out_markers = [
                 "билеты проданы",
                 "билетов нет",
@@ -117,11 +118,7 @@ async def check_page():
                 "no tickets",
             ]
 
-            if any(marker in text for marker in sold_out_markers):
-                log("Результат: билеты пока проданы")
-                return False, ticket_page.url, text[:1500]
-
-            # Проверяем технические ошибки, если статус билетов не определён
+            # Проверяем технические ошибки
             error_markers = [
                 "код ошибки",
                 "ошибка загрузки",
@@ -129,34 +126,23 @@ async def check_page():
                 "что-то пошло не так",
             ]
 
+            if any(marker in text for marker in sold_out_markers):
+                log("Результат: сообщение о продаже билетов присутствует")
+                return False, ticket_page.url, text[:1500]
+
             if any(marker in text for marker in error_markers):
                 raise Exception(
-                    "Яндекс Афиша вернула техническую ошибку. "
+                    "Обнаружена техническая ошибка. "
                     "Статус билетов определить невозможно."
                 )
 
-            # Проверяем явные признаки доступности билетов
-            available_markers = [
-                "выбрать места",
-                "выбрать билет",
-                "выбрать билеты",
-                "перейти к покупке",
-                "оформить заказ",
-            ]
+            # Сообщение о проданных билетах исчезло
+            log("ВНИМАНИЕ: сообщение «Билеты проданы» исчезло!")
+            log("Статус страницы изменился. Требуется ручная проверка.")
 
-            available = any(
-                marker in text for marker in available_markers
-            )
+            return True, ticket_page.url, text[:1500]
+```
 
-            if available:
-                log("Результат: обнаружены признаки доступных билетов")
-            else:
-                log(
-                    "Результат: статус не определён. "
-                    "Уведомление отправлять нельзя."
-                )
-
-            return available, ticket_page.url, text[:1500]
 
         finally:
             await browser.close()
