@@ -58,7 +58,7 @@ async def check_page():
 
             log("Кнопка найдена")
 
-                       # Нажимаем кнопку и перехватываем новую вкладку
+            # Нажимаем кнопку и перехватываем новую вкладку
             log("Шаг 3. Нажимаем кнопку «Купить билет»")
 
             try:
@@ -93,31 +93,7 @@ async def check_page():
                 raise Exception(
                     f"Открыта не страница Яндекс Афиши: {ticket_page.url}"
                 )
-            # Открываем именно ссылку покупки в отдельной вкладке
-            ticket_page = await page.context.new_page()
 
-            await ticket_page.goto(
-                ticket_url,
-                wait_until="domcontentloaded",
-                timeout=60000,
-            )
-
-            await ticket_page.wait_for_timeout(8000)
-
-            log(f"Шаг 4. Адрес страницы покупки: {ticket_page.url}")
-
-            # Проверяем, что мы действительно на Яндекс Афише
-            from urllib.parse import urlparse
-
-            hostname = urlparse(ticket_page.url).hostname or ""
-
-            if not (
-                hostname == "afisha.yandex.ru"
-                or hostname.endswith(".afisha.yandex.ru")
-            ):
-                raise Exception(
-                    f"Открыта не страница Яндекс Афиши: {ticket_page.url}"
-                )
 
             text = " ".join(
                 (await ticket_page.locator("body").inner_text(timeout=20000))
