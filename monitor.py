@@ -150,7 +150,6 @@ async def main():
 
     available, ticket_url, excerpt = await check_page()
 
-
     STATE_FILE.write_text(
         json.dumps(
             {
@@ -167,7 +166,7 @@ async def main():
     log("Шаг 6. Состояние сохранено")
 
     if available:
-        log("Билеты доступны! Отправляем уведомление")
+        log("Изменение статуса! Отправляем уведомление")
 
         telegram(
             "🎾 WOW CUP — ИЗМЕНЕНИЕ СТАТУСА!\n\n"
@@ -179,7 +178,7 @@ async def main():
 
         log("Уведомление отправлено в Telegram")
     else:
-        log("Новых билетов по результатам проверки не обнаружено")
+        log("Новых изменений по результатам проверки не обнаружено")
 
     log("Проверка завершена успешно")
 
