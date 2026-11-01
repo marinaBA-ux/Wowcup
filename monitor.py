@@ -58,32 +58,41 @@ async def check_page():
 
             log("Кнопка найдена")
 
-            # Диагностика структуры кнопки
-            button_info = await button.evaluate("""
-                el => {
-                    const result = [];
-                    let node = el;
+                       # Нажимаем кнопку и перехватываем новую вкладку
+            log("Шаг 3. Нажимаем кнопку «Купить билет»")
 
-                    for (let i = 0; i < 5 && node; i++) {
-                        result.push({
-                            tag: node.tagName,
-                            html: node.outerHTML.substring(0, 1000),
-                            href: node.href || null,
-                            onclick: node.getAttribute('onclick'),
-                            dataHref: node.getAttribute('data-href'),
-                            dataUrl: node.getAttribute('data-url')
-                        });
-                        node = node.parentElement;
-                    }
+            try:
+                async with page.expect_popup(timeout=20000) as popup_info:
+                    await page.locator("button.header-ticket").first.click()
 
-                    return result;
-                }
-            """)
+                ticket_page = await popup_info.value
 
-            log(f"Структура кнопки: {json.dumps(button_info, ensure_ascii=False)}")
+            except Exception as e:
+                raise Exception(
+                    f"Не удалось открыть новую вкладку с билетами: {e}"
+                ) from e
 
-            raise Exception("Диагностика завершена. Адрес кнопки пока не определён.")
+            await ticket_page.wait_for_load_state(
+                "domcontentloaded",
+                timeout=60000,
+            )
 
+            await ticket_page.wait_for_timeout(8000)
+
+            log(f"Шаг 4. Адрес страницы покупки: {ticket_page.url}")
+
+            # Проверяем, что открылась именно Яндекс Афиша
+            from urllib.parse import urlparse
+
+            hostname = urlparse(ticket_page.url).hostname or ""
+
+            if hostname not in [
+                "widget.afisha.yandex.ru",
+                "afisha.yandex.ru",
+            ] and not hostname.endswith(".afisha.yandex.ru"):
+                raise Exception(
+                    f"Открыта не страница Яндекс Афиши: {ticket_page.url}"
+                )
             # Открываем именно ссылку покупки в отдельной вкладке
             ticket_page = await page.context.new_page()
 
