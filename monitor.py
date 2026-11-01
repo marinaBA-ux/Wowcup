@@ -12,7 +12,6 @@ BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
 STATE_FILE = Path("state.json")
-SOLD_OUT_TEXT = "билеты проданы"
 
 
 def log(message):
@@ -31,7 +30,6 @@ def telegram(message: str):
     )
     response.raise_for_status()
 
-
 async def check_page():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -45,12 +43,10 @@ async def check_page():
                 wait_until="domcontentloaded",
                 timeout=60000,
             )
-
             await page.wait_for_timeout(5000)
 
             log(f"Главная страница открыта: {page.url}")
 
-            # Ищем кнопку покупки
             log("Шаг 2. Ищем кнопку «Купить билет»")
 
             button = page.get_by_text(
@@ -58,35 +54,50 @@ async def check_page():
             ).first
 
             if await button.count() == 0:
-                raise Exception("Кнопка «Купить билет» не найдена")
+                raise Exception("Кнопка покупки не найдена")
 
             log("Кнопка найдена")
 
-            # Отслеживаем открытие новой вкладки
-            log("Шаг 3. Нажимаем кнопку покупки")
+            # Получаем адрес ссылки непосредственно из кнопки
+            ticket_url = await button.evaluate("""
+                el => {
+                    const link = el.closest('a') || el.querySelector('a');
+                    return link ? link.href : null;
+                }
+            """)
 
-            popups = []
-            page.on("popup", lambda popup: popups.append(popup))
+            if not ticket_url:
+                raise Exception(
+                    "Не удалось получить адрес ссылки кнопки покупки"
+                )
 
-            await button.click(timeout=15000)
-            await page.wait_for_timeout(7000)
+            log(f"Шаг 3. Получена ссылка на покупку: {ticket_url}")
 
-            # Проверяем, открылась ли новая вкладка
-            if popups:
-                ticket_page = popups[0]
-                log("Открылась новая вкладка")
-            else:
-                ticket_page = page
-                log("Новая вкладка не открылась. Проверяем текущую")
+            # Открываем именно ссылку покупки в отдельной вкладке
+            ticket_page = await page.context.new_page()
 
-            await ticket_page.wait_for_load_state(
-                "domcontentloaded",
-                timeout=30000,
+            await ticket_page.goto(
+                ticket_url,
+                wait_until="domcontentloaded",
+                timeout=60000,
             )
 
-            await ticket_page.wait_for_timeout(5000)
+            await ticket_page.wait_for_timeout(8000)
 
             log(f"Шаг 4. Адрес страницы покупки: {ticket_page.url}")
+
+            # Проверяем, что мы действительно на Яндекс Афише
+            from urllib.parse import urlparse
+
+            hostname = urlparse(ticket_page.url).hostname or ""
+
+            if not (
+                hostname == "afisha.yandex.ru"
+                or hostname.endswith(".afisha.yandex.ru")
+            ):
+                raise Exception(
+                    f"Открыта не страница Яндекс Афиши: {ticket_page.url}"
+                )
 
             text = " ".join(
                 (await ticket_page.locator("body").inner_text(timeout=20000))
@@ -95,17 +106,59 @@ async def check_page():
             )
 
             if not text:
-                raise Exception("На странице покупки не найден текст")
+                raise Exception("Страница покупки не содержит текста")
 
             log("Шаг 5. Текст страницы получен")
-            log(f"Содержимое страницы (первые 1500 символов): {text[:1500]}")
+            log(f"Содержимое страницы: {text[:1500]}")
 
-            available = SOLD_OUT_TEXT not in text
+            # Проверяем отсутствие билетов
+            sold_out_markers = [
+                "билеты проданы",
+                "билетов нет",
+                "билеты закончились",
+                "распродано",
+                "sold out",
+                "no tickets",
+            ]
+
+            if any(marker in text for marker in sold_out_markers):
+                log("Результат: билеты пока проданы")
+                return False, ticket_page.url, text[:1500]
+
+            # Проверяем технические ошибки, если статус билетов не определён
+            error_markers = [
+                "код ошибки",
+                "ошибка загрузки",
+                "страница недоступна",
+                "что-то пошло не так",
+            ]
+
+            if any(marker in text for marker in error_markers):
+                raise Exception(
+                    "Яндекс Афиша вернула техническую ошибку. "
+                    "Статус билетов определить невозможно."
+                )
+
+            # Проверяем явные признаки доступности билетов
+            available_markers = [
+                "выбрать места",
+                "выбрать билет",
+                "выбрать билеты",
+                "перейти к покупке",
+                "оформить заказ",
+            ]
+
+            available = any(
+                marker in text for marker in available_markers
+            )
 
             if available:
-                log("Результат: фраза «Билеты проданы» НЕ найдена")
+                log("Результат: обнаружены признаки доступных билетов")
             else:
-                log("Результат: билеты пока проданы")
+                log(
+                    "Результат: статус не определён. "
+                    "Уведомление отправлять нельзя."
+                )
 
             return available, ticket_page.url, text[:1500]
 
@@ -118,17 +171,6 @@ async def main():
 
     available, ticket_url, excerpt = await check_page()
 
-    state = {"available": False}
-
-    if STATE_FILE.exists():
-        try:
-            state = json.loads(
-                STATE_FILE.read_text(encoding="utf-8")
-            )
-        except Exception:
-            pass
-
-    previously_available = bool(state.get("available"))
 
     STATE_FILE.write_text(
         json.dumps(
@@ -145,8 +187,8 @@ async def main():
 
     log("Шаг 6. Состояние сохранено")
 
-    if available and not previously_available:
-        log("Обнаружено изменение статуса! Отправляем уведомление")
+    if available:
+        log("Билеты доступны! Отправляем уведомление")
 
         telegram(
             "🎟️ Возможно, на WOW Cup появились билеты!\n\n"
