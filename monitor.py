@@ -130,10 +130,9 @@ async def check_page():
                 return False, ticket_page.url, text[:1500]
 
             if any(marker in text for marker in error_markers):
-                raise Exception(
-                    "Обнаружена техническая ошибка. "
-                    "Статус билетов определить невозможно."
-                )
+                log("Обнаружена техническая ошибка Яндекс Афиши")
+                log("Статус билетов определить невозможно")
+                return False, ticket_page.url, text[:1500]
 
             # Сообщение о проданных билетах исчезло
             log("ВНИМАНИЕ: сообщение «Билеты проданы» исчезло!")
