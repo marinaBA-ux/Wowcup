@@ -81,19 +81,20 @@ async def check_page():
 
             log(f"Шаг 4. Адрес страницы покупки: {ticket_page.url}")
 
-            # Проверяем, что открылась именно Яндекс Афиша
+            # Определяем билетный сервис
             from urllib.parse import urlparse
 
             hostname = urlparse(ticket_page.url).hostname or ""
 
-            if hostname not in [
-                "widget.afisha.yandex.ru",
-                "afisha.yandex.ru",
-            ] and not hostname.endswith(".afisha.yandex.ru"):
-                raise Exception(
-                    f"Открыта не страница Яндекс Афиши: {ticket_page.url}"
-                )
-
+            if (
+                hostname == "widget.afisha.yandex.ru"
+                or hostname == "afisha.yandex.ru"
+                or hostname.endswith(".afisha.yandex.ru")
+            ):
+                log("Открыта Яндекс Афиша")
+            else:
+                log(f"Открыт другой билетный сервис: {hostname}")
+                log("Применяем универсальную проверку страницы")
 
             text = " ".join(
                 (await ticket_page.locator("body").inner_text(timeout=20000))
@@ -130,13 +131,13 @@ async def check_page():
                 return False, ticket_page.url, text[:1500]
 
             if any(marker in text for marker in error_markers):
-                log("Обнаружена техническая ошибка Яндекс Афиши")
+                log("Обнаружена техническая ошибка билетного сервиса")
                 log("Статус билетов определить невозможно")
                 return False, ticket_page.url, text[:1500]
 
-            # Сообщение о проданных билетах исчезло
-            log("ВНИМАНИЕ: сообщение «Билеты проданы» исчезло!")
-            log("Статус страницы изменился. Требуется ручная проверка.")
+            # Не обнаружены известные сообщения об отсутствии билетов и ошибках
+            log("ВНИМАНИЕ: не обнаружены известные сообщения об отсутствии билетов!")
+            log("Возможно, статус изменился. Требуется ручная проверка.")
 
             return True, ticket_page.url, text[:1500]
 
@@ -165,10 +166,11 @@ async def main():
     log("Шаг 6. Состояние сохранено")
 
     if available:
-        log("Изменение статуса! Отправляем уведомление")
+        log("Обнаружены признаки возможного изменения статуса! Отправляем уведомление")
         telegram(
-            "🎾 WOW CUP — ИЗМЕНЕНИЕ СТАТУСА!\n\n"
-            "Сообщение «Билеты проданы» исчезло.\n"
+            "🎾 WOW CUP — ВОЗМОЖНО, ИЗМЕНИЛСЯ СТАТУС БИЛЕТОВ!\n\n"
+            "На странице не обнаружены известные сообщения "
+            "об отсутствии билетов или технической ошибке.\n"
             "Возможно, началась продажа билетов!\n\n"
             f"Проверить билеты:\n{ticket_url}\n\n"
             "Открой страницу и проверь наличие свободных мест."
