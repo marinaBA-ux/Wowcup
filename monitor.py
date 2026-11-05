@@ -148,6 +148,8 @@ async def check_page():
 async def main():
     log("Начинаем проверку WOW Cup")
 
+    telegram("🧪 ТЕСТ WOW CUP: бот успешно отправляет сообщения!")
+
     available, ticket_url, excerpt = await check_page()
 
     STATE_FILE.write_text(
